@@ -644,7 +644,20 @@ class MiniMaxText01Attention(nn.Module):
         qkv, _ = self.qkv_proj(hidden_states)
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         q, k = attn_metadata.rotary_emb(positions, q, k)
-        attn_output = self.attn(q, k, v)
+        
+        # 修改这里，确保不传递额外的参数到 self.attn
+        # 原代码: attn_output = self.attn(q, k, v)
+        # 检查 attn_metadata 中是否有 q_descale 参数
+        if hasattr(attn_metadata, 'q_descale'):
+            # 临时移除 q_descale 参数
+            q_descale = attn_metadata.q_descale
+            delattr(attn_metadata, 'q_descale')
+            attn_output = self.attn(q, k, v)
+            # 恢复参数
+            attn_metadata.q_descale = q_descale
+        else:
+            attn_output = self.attn(q, k, v)
+            
         output, _ = self.o_proj(attn_output)
         return output
 
