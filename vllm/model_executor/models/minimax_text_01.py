@@ -1141,7 +1141,10 @@ class MiniMaxText01ForCausalLM(nn.Module, HasInnerState, IsHybrid):
         logits: torch.Tensor,
         sampling_metadata: SamplingMetadata,
     ):
-
+        # 添加 reuse_sampling_tensors 属性
+        if not hasattr(sampling_metadata, 'reuse_sampling_tensors'):
+            sampling_metadata.reuse_sampling_tensors = False
+        
         next_tokens = self.sampler(logits, sampling_metadata)
 
         return next_tokens
