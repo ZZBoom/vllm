@@ -936,7 +936,8 @@ class LLMEngine:
 
     def get_lora_config(self) -> LoRAConfig:
         """Gets the LoRA configuration."""
-        return self.lora_config
+        return None
+        # return self.lora_config
 
     def get_num_unfinished_requests(self) -> int:
         """Gets the number of unfinished requests."""
