@@ -936,15 +936,7 @@ class MiniMaxText01Model(nn.Module):
         if "finished_requests_ids" not in kwargs:
             kwargs["finished_requests_ids"] = []
         if attn_metadata is None:
-            from vllm.attention import AttentionMetadata
-            attn_metadata = AttentionMetadata(
-                num_prefills=1,
-                num_prefill_tokens=2,
-                num_decode_tokens=input_ids.shape[0] if input_ids is not None else 0,
-                slot_mapping=torch.zeros(1),
-                multi_modal_placeholder_index_maps=None,
-                enable_kv_scales_calculation=True,
-            )
+            return None
         (
             minimax_cache_tensors,
             state_indices_tensor,
@@ -1065,21 +1057,21 @@ class MiniMaxText01ForCausalLM(nn.Module, HasInnerState, IsHybrid):
         return hidden_states
 
     def compute_logits(self, hidden_states: torch.Tensor,
-                       sampling_metadata: SamplingMetadata) -> torch.Tensor:
+                    sampling_metadata: SamplingMetadata) -> torch.Tensor:
         # 处理sampling_metadata为None的情况（用于profile_run）
         if sampling_metadata is None:
             # 返回一个dummy logits张量，仅用于profile_run
             batch_size = hidden_states.shape[0]
             return torch.zeros((batch_size, self.config.vocab_size),
-                              dtype=hidden_states.dtype,
-                              device=hidden_states.device)
+                            dtype=hidden_states.dtype,
+                            device=hidden_states.device)
         
         # 确保hidden_states的数据类型与lm_head.weight一致
         if hidden_states.dtype != self.lm_head.weight.dtype:
             hidden_states = hidden_states.to(self.lm_head.weight.dtype)
         
         logits = self.logits_processor(self.lm_head, hidden_states,
-                                       sampling_metadata)
+                                    sampling_metadata)
 
         return logits
 
