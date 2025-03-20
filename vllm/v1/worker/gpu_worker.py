@@ -225,8 +225,8 @@ class Worker(WorkerBase):
                                self.scheduler_config.max_num_batched_tokens)
             hidden_states=self.model_runner._dummy_run(
                     num_tokens=max_num_reqs)
-            if hidden_states is not None:
-                self.model_runner._dummy_sampler_run(hidden_states)
+            # if hidden_states is not None:
+            #     self.model_runner._dummy_sampler_run(hidden_states)
 
         # Reset the seed to ensure that the random state is not affected by
         # the model initialization and profiling.
