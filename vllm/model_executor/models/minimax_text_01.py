@@ -502,7 +502,23 @@ class MiniMaxText01LinearAttention(nn.Module):
 
         hidden = self.norm._forward(hidden)
         gate, _ = self.output_gate(hidden_states)
-        hidden = F.sigmoid(gate) * hidden
+        
+        if hidden.size(0) > 0:
+            if gate.size(0) != hidden.size(0):
+                if not decode_only and get_num_prefills(attn_metadata) > 0:
+                    valid_indices = []
+                    for i in range(get_num_prefills(attn_metadata)):
+                        start = attn_metadata.query_start_loc[i]
+                        end = attn_metadata.query_start_loc[i + 1]
+                        valid_indices.extend(range(start, end))
+                    
+                    if valid_indices:
+                        gate = gate[valid_indices]
+                else:
+                    gate = gate[-hidden.size(0):]
+            
+            hidden = F.sigmoid(gate) * hidden
+        
         hidden = hidden.to(hidden_states.dtype)
         hidden, _ = self.out_proj(hidden)
         return hidden
