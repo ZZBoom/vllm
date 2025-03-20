@@ -84,7 +84,7 @@ def get_num_prefills(attn_metadata):
                 (FlashAttentionMetadata, XFormersMetadata,
                 PlaceholderAttentionMetadata))
         and attn_metadata.context_lens_tensor is not None):
-        if attn_metadata.context_lens_tensor > 0:
+        if attn_metadata.context_lens_tensor.numel() > 0 and (attn_metadata.context_lens_tensor > 0).any():
             return 1
         else:
             return 0
@@ -468,7 +468,7 @@ class MiniMaxText01LinearAttention(nn.Module):
                       attn_metadata):
         num_prefills = get_num_prefills(attn_metadata)
         total_prefill_tokens = 0
-        if num_prefills > 0 and len(attn_metadata.query_start_loc) > num_prefills:
+        if num_prefills > 0 and hasattr(attn_metadata, "query_start_loc") and len(attn_metadata.query_start_loc) > num_prefills:
             total_prefill_tokens = attn_metadata.query_start_loc[num_prefills]
         
         if total_prefill_tokens >= q.shape[0]:
@@ -480,7 +480,7 @@ class MiniMaxText01LinearAttention(nn.Module):
         k = k[total_prefill_tokens:].unsqueeze(2).contiguous()
         v = v[total_prefill_tokens:].unsqueeze(2).contiguous()
         
-        if num_prefills >= len(state_indices_tensor):
+        if state_indices_tensor is None or num_prefills >= len(state_indices_tensor):
             return torch.zeros_like(q.squeeze(2))
         
         slot_id = state_indices_tensor[num_prefills:]
