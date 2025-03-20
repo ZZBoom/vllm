@@ -921,9 +921,9 @@ class MiniMaxText01Model(nn.Module):
         attn_metadata = forward_context.attn_metadata
         if attn_metadata is None:
             return None
-        if kwargs["request_ids_to_seq_ids"] is None:
+        if "request_ids_to_seq_ids" not in kwargs:
             kwargs["request_ids_to_seq_ids"] = {}
-        if kwargs["finished_requests_ids"] is None:
+        if "finished_requests_ids" not in kwargs:
             kwargs["finished_requests_ids"] = []
         (
             minimax_cache_tensors,
