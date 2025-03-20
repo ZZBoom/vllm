@@ -910,6 +910,8 @@ class MiniMaxText01Model(nn.Module):
                 **kwargs) -> torch.Tensor:
         forward_context = get_forward_context()
         attn_metadata = forward_context.attn_metadata
+
+        # for dummy_run
         if "request_ids_to_seq_ids" not in kwargs:
             kwargs["request_ids_to_seq_ids"] = {}
         if "finished_requests_ids" not in kwargs:
@@ -917,13 +919,12 @@ class MiniMaxText01Model(nn.Module):
         if attn_metadata is None:
             from vllm.attention import AttentionMetadata
             attn_metadata = AttentionMetadata(
-                num_prefills=0,
-                num_prefill_tokens=0,
-                num_decode_tokens=input_ids.shape[0] if input_ids is not None else 0,
-                query_start_loc=torch.zeros(1, dtype=torch.int32, device=positions.device),
-                context_lens_tensor=torch.zeros(1, dtype=torch.int32, device=positions.device),
-                max_context_len=0,
-                rotary_emb=self.rotary_emb
+                num_prefills=1,
+                num_prefill_tokens=2,
+                num_decode_tokens=3,
+                slot_mapping=torch.zeros(1),
+                multi_modal_placeholder_index_maps=None,
+                enable_kv_scales_calculation=True,
             )
         (
             minimax_cache_tensors,
