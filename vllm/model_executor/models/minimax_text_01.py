@@ -34,7 +34,6 @@ from vllm.model_executor.layers.logits_processor import LogitsProcessor
 from vllm.model_executor.layers.quantization.base_config import (
     QuantizationConfig)
 from vllm.model_executor.layers.sampler import Sampler
-from vllm.model_executor.layers.utils import make_layers
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     DEFAULT_VOCAB_PADDING_SIZE, ParallelLMHead, VocabParallelEmbedding)
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
@@ -44,7 +43,7 @@ from vllm.sequence import IntermediateTensors
 
 from .interfaces import HasInnerState, IsHybrid
 from .minimax_cache import MinimaxCacheManager, MinimaxCacheParams
-from .utils import PPMissingLayer, is_pp_missing_parameter
+from .utils import PPMissingLayer, is_pp_missing_parameter, make_layers
 
 
 def replace_weight_name(name: str,
