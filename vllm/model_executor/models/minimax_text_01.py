@@ -470,8 +470,8 @@ class MiniMaxText01LinearAttention(nn.Module):
         if attn_metadata is None:
             from vllm.attention import AttentionMetadata
             attn_metadata = AttentionMetadata(
-                num_prefills=0,
-                num_prefill_tokens=0,
+                num_prefills=1,
+                num_prefill_tokens=2,
                 num_decode_tokens=hidden_states.shape[0],
                 slot_mapping=torch.zeros(1, device=hidden_states.device, dtype=torch.long),
                 multi_modal_placeholder_index_maps=None,
@@ -931,8 +931,8 @@ class MiniMaxText01Model(nn.Module):
         if attn_metadata is None:
             from vllm.attention import AttentionMetadata
             attn_metadata = AttentionMetadata(
-                num_prefills=0,
-                num_prefill_tokens=0,
+                num_prefills=1,
+                num_prefill_tokens=2,
                 num_decode_tokens=input_ids.shape[0] if input_ids is not None else 0,
                 slot_mapping=torch.zeros(1),
                 multi_modal_placeholder_index_maps=None,
