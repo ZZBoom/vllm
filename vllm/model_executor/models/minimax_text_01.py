@@ -128,13 +128,22 @@ class MiniMaxText01RMSNormTP(CustomOp):
                 variance) / self.tp_world
         x = x * torch.rsqrt(variance + self.variance_epsilon)
         
+        if x.size(-1) == 0:
+            return x.to(orig_dtype)
+        
         if x.dim() > 1 and x.size(-1) != self.weight.size(0):
             weight = self.weight.view(1, -1)
             if weight.size(-1) != x.size(-1):
-                weight = weight.repeat(1, x.size(-1) // weight.size(-1))
+                if weight.size(-1) > 0 and x.size(-1) > 0:
+                    weight = weight.repeat(1, x.size(-1) // weight.size(-1) + (1 if x.size(-1) % weight.size(-1) != 0 else 0))
+                    if weight.size(-1) > x.size(-1):
+                        weight = weight[:, :x.size(-1)]
         else:
             weight = self.weight
             
+        if weight.numel() == 0 or x.numel() == 0:
+            return x.to(orig_dtype)
+        
         x = x.to(orig_dtype) * weight
         return x
 
