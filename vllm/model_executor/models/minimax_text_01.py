@@ -928,9 +928,8 @@ class MiniMaxText01Model(nn.Module):
         attn_metadata = forward_context.attn_metadata
         if attn_metadata is None:
             device = input_ids.device if input_ids is not None else positions.device
-            dtype = input_ids.dtype if input_ids is not None else positions.dtype
             return torch.zeros((1, self.hidden_size), 
-                            dtype=dtype, 
+                            dtype=self._dtype, 
                             device=device)
         if "request_ids_to_seq_ids" not in kwargs:
             kwargs["request_ids_to_seq_ids"] = {}
@@ -1067,6 +1066,10 @@ class MiniMaxText01ForCausalLM(nn.Module, HasInnerState, IsHybrid):
 
     def compute_logits(self, hidden_states: torch.Tensor,
                        sampling_metadata: SamplingMetadata) -> torch.Tensor:
+        # 确保hidden_states的数据类型与lm_head.weight一致
+        if hidden_states.dtype != self.lm_head.weight.dtype:
+            hidden_states = hidden_states.to(self.lm_head.weight.dtype)
+        
         logits = self.logits_processor(self.lm_head, hidden_states,
                                        sampling_metadata)
 
