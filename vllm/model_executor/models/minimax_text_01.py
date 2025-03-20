@@ -466,6 +466,17 @@ class MiniMaxText01LinearAttention(nn.Module):
         kv_cache = kv_caches.minimax_cache
         state_indices_tensor = kv_caches.state_indices_tensor
 
+        # for dummy_run
+        if attn_metadata is None:
+            from vllm.attention import AttentionMetadata
+            attn_metadata = AttentionMetadata(
+                num_prefills=0,
+                num_prefill_tokens=0,
+                num_decode_tokens=hidden_states.shape[0],
+                slot_mapping=torch.zeros(1, device=hidden_states.device, dtype=torch.long),
+                multi_modal_placeholder_index_maps=None,
+                enable_kv_scales_calculation=True,
+            )
         decode_only = attn_metadata.num_prefills == 0
         if not decode_only:
             # prefill and mix
