@@ -1066,6 +1066,14 @@ class MiniMaxText01ForCausalLM(nn.Module, HasInnerState, IsHybrid):
 
     def compute_logits(self, hidden_states: torch.Tensor,
                        sampling_metadata: SamplingMetadata) -> torch.Tensor:
+        # 处理sampling_metadata为None的情况（用于profile_run）
+        if sampling_metadata is None:
+            # 返回一个dummy logits张量，仅用于profile_run
+            batch_size = hidden_states.shape[0]
+            return torch.zeros((batch_size, self.config.vocab_size),
+                              dtype=hidden_states.dtype,
+                              device=hidden_states.device)
+        
         # 确保hidden_states的数据类型与lm_head.weight一致
         if hidden_states.dtype != self.lm_head.weight.dtype:
             hidden_states = hidden_states.to(self.lm_head.weight.dtype)
