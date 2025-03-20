@@ -116,36 +116,26 @@ class MiniMaxText01RMSNormTP(CustomOp):
         param.data.copy_(loaded_weight[shard])
         return
 
-    def _forward(
-        self,
-        x: torch.Tensor,
-    ) -> torch.Tensor:
+    def _forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.numel() == 0:
+            return x
+        
         orig_dtype = x.dtype
         x = x.to(torch.float32)
         variance = x.pow(2).mean(dim=-1, keepdim=True, dtype=torch.float32)
         if self.tp_world > 1:
-            variance = tensor_model_parallel_all_reduce(
-                variance) / self.tp_world
+            variance = tensor_model_parallel_all_reduce(variance) / self.tp_world
         x = x * torch.rsqrt(variance + self.variance_epsilon)
         
-        if x.size(-1) == 0:
-            return x.to(orig_dtype)
-        
-        if x.dim() > 1 and x.size(-1) != self.weight.size(0):
+        if x.dim() > 1 and x.size(-1) != self.weight.size(0) and self.weight.size(0) > 0:
             weight = self.weight.view(1, -1)
-            if weight.size(-1) != x.size(-1):
-                if weight.size(-1) > 0 and x.size(-1) > 0:
-                    weight = weight.repeat(1, x.size(-1) // weight.size(-1) + (1 if x.size(-1) % weight.size(-1) != 0 else 0))
-                    if weight.size(-1) > x.size(-1):
-                        weight = weight[:, :x.size(-1)]
+            if x.size(-1) > weight.size(-1):
+                repeat_factor = (x.size(-1) + weight.size(-1) - 1) // weight.size(-1)
+                weight = weight.repeat(1, repeat_factor)[:, :x.size(-1)]
         else:
             weight = self.weight
-            
-        if weight.numel() == 0 or x.numel() == 0:
-            return x.to(orig_dtype)
         
-        x = x.to(orig_dtype) * weight
-        return x
+        return (x * weight).to(orig_dtype)
 
     def forward(
         self,
@@ -331,7 +321,6 @@ class MiniMaxText01LinearKernel:
                                   block_size: int,
                                   layer_idx: int = None,
                                   **kwargs) -> torch.Tensor:
-
         slope_rate = slope_rate.to(torch.float32)
         should_pad_dim = q.dim() == 3
         if should_pad_dim:
@@ -444,14 +433,13 @@ class MiniMaxText01LinearAttention(nn.Module):
                                   n_attention_heads, 1, 1)
         return slopes  # [h, 1, 1]
 
-    def _prefill_and_mix_infer(self, q, k, v, kv_cache, state_indices_tensor,
-                               attn_metadata):
+    def _prefill_and_mix_infer(self, q, k, v, kv_cache, state_indices_tensor, attn_metadata):
         hidden = []
         num_prefills = get_num_prefills(attn_metadata)
         
-        if num_prefills > 0 and state_indices_tensor.numel() == 0:
+        if num_prefills == 0 or state_indices_tensor.numel() == 0:
             return torch.zeros((0, q.size(-1)), device=q.device, dtype=q.dtype)
-            
+        
         for _prefill_idx in range(num_prefills):
             _start = attn_metadata.query_start_loc[_prefill_idx]
             _end = attn_metadata.query_start_loc[_prefill_idx + 1]
@@ -462,24 +450,15 @@ class MiniMaxText01LinearAttention(nn.Module):
             slice_layer_cache = kv_cache[slot_id, ...]
 
             out_slice = MiniMaxText01LinearKernel.jit_linear_forward_prefix(
-                qs,
-                ks,
-                vs,
-                slice_layer_cache,
-                self.tp_slope,
-                self.BLOCK,
-                layer_idx=self.layer_idx)
+                qs, ks, vs, slice_layer_cache, self.tp_slope, self.BLOCK, layer_idx=self.layer_idx)
             hidden.append(out_slice.contiguous())
+        
         if attn_metadata.num_decode_tokens > 0:
-            hidden.append(
-                self._decode_infer(q, k, v, kv_cache, state_indices_tensor,
-                                   attn_metadata))
+            hidden.append(self._decode_infer(q, k, v, kv_cache, state_indices_tensor, attn_metadata))
         
         if not hidden:
             return torch.zeros((0, q.size(-1)), device=q.device, dtype=q.dtype)
-            
-        hidden = torch.concat(hidden, dim=0).contiguous()
-        return hidden
+        return torch.concat(hidden, dim=0).contiguous()
 
     def _decode_infer(self, q, k, v, kv_cache, state_indices_tensor,
                       attn_metadata):
@@ -767,8 +746,7 @@ class MiniMaxText01DecoderLayer(nn.Module):
         if self.expert_num == 1:
             hidden_states = self.mlp(layernorm_output)
         else:
-            moe_hidden_states = self.block_sparse_moe(
-                copy.deepcopy(layernorm_output))
+            moe_hidden_states = self.block_sparse_moe(layernorm_output)
             if self.shared_moe:
 
                 # shared-moe part use all fp32 compute
@@ -923,8 +901,7 @@ class MiniMaxText01Model(nn.Module):
         self.embed_scale = 1.0
         return
 
-    def _clear_prefill_cache(self, attn_metadata,
-                             minimax_cache_tensors: torch.Tensor, **kwargs):
+    def _clear_prefill_cache(self, attn_metadata, minimax_cache_tensors, **kwargs):
         seq_to_slot_maps = {}
         seq_id_map = sum(list(kwargs["request_ids_to_seq_ids"].values()), [])
         for _, seq_to_slot_map in (
