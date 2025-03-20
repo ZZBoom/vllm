@@ -926,9 +926,11 @@ class MiniMaxText01Model(nn.Module):
         forward_context = get_forward_context()
         attn_metadata = forward_context.attn_metadata
         if attn_metadata is None:
-            return torch.zeros((1, self.hidden_size), 
-                            dtype=self.dtype, 
-                            device=self.device)
+            device = input_ids.device if input_ids is not None else positions.device
+            dtype = input_ids.dtype if input_ids is not None else positions.dtype
+            return torch.zeros((1, self.config.hidden_size), 
+                            dtype=dtype, 
+                            device=device)
         # for dummy_run
         if "request_ids_to_seq_ids" not in kwargs:
             kwargs["request_ids_to_seq_ids"] = {}
