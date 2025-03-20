@@ -471,11 +471,41 @@ class MiniMaxText01LinearAttention(nn.Module):
         if num_prefills > 0 and len(attn_metadata.query_start_loc) > num_prefills:
             total_prefill_tokens = attn_metadata.query_start_loc[num_prefills]
         
+        if total_prefill_tokens >= q.shape[0]:
+            empty_shape = list(q.shape)
+            empty_shape[0] = 0
+            return torch.zeros(empty_shape, device=q.device, dtype=q.dtype)
+        
         q = q[total_prefill_tokens:].unsqueeze(2).contiguous()
         k = k[total_prefill_tokens:].unsqueeze(2).contiguous()
         v = v[total_prefill_tokens:].unsqueeze(2).contiguous()
         
+        if num_prefills >= len(state_indices_tensor):
+            return torch.zeros_like(q.squeeze(2))
+        
         slot_id = state_indices_tensor[num_prefills:]
+        
+        if slot_id.numel() == 0:
+            return torch.zeros_like(q.squeeze(2))
+        
+        max_slot = kv_cache.shape[0] - 1
+        slot_id = torch.clamp(slot_id, 0, max_slot)
+        
+        batch_size = slot_id.shape[0]
+        if q.shape[0] != batch_size or k.shape[0] != batch_size or v.shape[0] != batch_size:
+            if q.shape[0] > batch_size:
+                q = q[:batch_size]
+                k = k[:batch_size]
+                v = v[:batch_size]
+            else:
+                pad_size = batch_size - q.shape[0]
+                q_pad = torch.zeros((pad_size,) + q.shape[1:], device=q.device, dtype=q.dtype)
+                k_pad = torch.zeros((pad_size,) + k.shape[1:], device=k.device, dtype=k.dtype)
+                v_pad = torch.zeros((pad_size,) + v.shape[1:], device=v.device, dtype=v.dtype)
+                q = torch.cat([q, q_pad], dim=0)
+                k = torch.cat([k, k_pad], dim=0)
+                v = torch.cat([v, v_pad], dim=0)
+        
         hidden = linear_decode_forward_triton(q, k, v, kv_cache, self.tp_slope,
                                               slot_id, 32)
         return hidden
@@ -497,6 +527,15 @@ class MiniMaxText01LinearAttention(nn.Module):
         state_indices_tensor = kv_caches.state_indices_tensor
         num_prefills = get_num_prefills(attn_metadata)
         decode_only = num_prefills == 0
+        
+        if kv_cache is None or kv_cache.numel() == 0:
+            hidden = torch.zeros_like(hidden_states)
+            return hidden
+        
+        if state_indices_tensor is None or state_indices_tensor.numel() == 0:
+            hidden = torch.zeros_like(hidden_states)
+            return hidden
+        
         if not decode_only:
             # prefill and mix
             hidden = self._prefill_and_mix_infer(q, k, v, kv_cache,
@@ -507,8 +546,21 @@ class MiniMaxText01LinearAttention(nn.Module):
             hidden = self._decode_infer(q, k, v, kv_cache,
                                         state_indices_tensor, attn_metadata)
 
+        if hidden is None or hidden.numel() == 0:
+            hidden = torch.zeros_like(hidden_states)
+            return hidden
+
         hidden = self.norm._forward(hidden)
         gate, _ = self.output_gate(hidden_states)
+        
+        if gate.shape[0] != hidden.shape[0]:
+            if gate.shape[0] > hidden.shape[0]:
+                gate = gate[:hidden.shape[0]]
+            else:
+                pad_size = hidden.shape[0] - gate.shape[0]
+                gate_pad = torch.zeros((pad_size,) + gate.shape[1:], device=gate.device, dtype=gate.dtype)
+                gate = torch.cat([gate, gate_pad], dim=0)
+        
         hidden = F.sigmoid(gate) * hidden
         hidden = hidden.to(hidden_states.dtype)
         hidden, _ = self.out_proj(hidden)
@@ -936,7 +988,8 @@ class MiniMaxText01Model(nn.Module):
                 cache_slot_id = seq_to_slot_maps[seq_id]
                 minimax_cache_tensors[:, cache_slot_id, ...].zero_()
 
-    def forward(self,
+    def forward(
+                self,
                 input_ids: Optional[torch.Tensor],
                 positions: torch.Tensor,
                 kv_caches: List[torch.Tensor],
