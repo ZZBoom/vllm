@@ -890,10 +890,11 @@ class MiniMaxText01Model(nn.Module):
 
         slots_to_clear = []
         for _prefill_id in range(attn_metadata.num_prefills):
-            seq_id = seq_id_map[_prefill_id]
-            if attn_metadata.context_lens_tensor[
-                    _prefill_id] == 0 and seq_id in seq_to_slot_maps:
-                slots_to_clear.append(seq_to_slot_maps[seq_id])
+            if _prefill_id < len(seq_id_map):
+                seq_id = seq_id_map[_prefill_id]
+                if attn_metadata.context_lens_tensor[
+                        _prefill_id] == 0 and seq_id in seq_to_slot_maps:
+                    slots_to_clear.append(seq_to_slot_maps[seq_id])
 
         if slots_to_clear:
             slots_tensor = torch.tensor(slots_to_clear,
@@ -919,9 +920,9 @@ class MiniMaxText01Model(nn.Module):
         if attn_metadata is None:
             from vllm.attention import AttentionMetadata
             attn_metadata = AttentionMetadata(
-                num_prefills=1,
-                num_prefill_tokens=2,
-                num_decode_tokens=3,
+                num_prefills=0,
+                num_prefill_tokens=0,
+                num_decode_tokens=input_ids.shape[0] if input_ids is not None else 0,
                 slot_mapping=torch.zeros(1),
                 multi_modal_placeholder_index_maps=None,
                 enable_kv_scales_calculation=True,
