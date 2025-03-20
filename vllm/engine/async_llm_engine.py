@@ -1186,8 +1186,7 @@ class AsyncLLMEngine(EngineClient):
 
     async def get_lora_config(self) -> LoRAConfig:
         """Get the lora configuration of the vLLM engine."""
-        return None
-        # return self.engine.get_lora_config()
+        return self.engine.get_lora_config()
 
     async def do_log_stats(
             self,
