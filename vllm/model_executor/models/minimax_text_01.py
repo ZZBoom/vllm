@@ -468,7 +468,7 @@ class MiniMaxText01LinearAttention(nn.Module):
                       attn_metadata):
         num_prefills = get_num_prefills(attn_metadata)
         total_prefill_tokens = 0
-        if num_prefills > 0 and hasattr(attn_metadata, "query_start_loc") and len(attn_metadata.query_start_loc) > num_prefills:
+        if num_prefills > 0 and len(attn_metadata.query_start_loc) > num_prefills:
             total_prefill_tokens = attn_metadata.query_start_loc[num_prefills]
         
         if total_prefill_tokens >= q.shape[0]:
@@ -480,7 +480,7 @@ class MiniMaxText01LinearAttention(nn.Module):
         k = k[total_prefill_tokens:].unsqueeze(2).contiguous()
         v = v[total_prefill_tokens:].unsqueeze(2).contiguous()
         
-        if state_indices_tensor is None or num_prefills >= len(state_indices_tensor):
+        if num_prefills >= len(state_indices_tensor):
             return torch.zeros_like(q.squeeze(2))
         
         slot_id = state_indices_tensor[num_prefills:]
@@ -644,20 +644,7 @@ class MiniMaxText01Attention(nn.Module):
         qkv, _ = self.qkv_proj(hidden_states)
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         q, k = attn_metadata.rotary_emb(positions, q, k)
-        
-        # 修改这里，确保不传递额外的参数到 self.attn
-        # 原代码: attn_output = self.attn(q, k, v)
-        # 检查 attn_metadata 中是否有 q_descale 参数
-        if hasattr(attn_metadata, 'q_descale'):
-            # 临时移除 q_descale 参数
-            q_descale = attn_metadata.q_descale
-            delattr(attn_metadata, 'q_descale')
-            attn_output = self.attn(q, k, v)
-            # 恢复参数
-            attn_metadata.q_descale = q_descale
-        else:
-            attn_output = self.attn(q, k, v)
-            
+        attn_output = self.attn(q, k, v)
         output, _ = self.o_proj(attn_output)
         return output
 
