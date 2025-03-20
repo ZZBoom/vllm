@@ -431,6 +431,10 @@ class MiniMaxText01LinearAttention(nn.Module):
                                attn_metadata):
         hidden = []
         num_prefills = get_num_prefills(attn_metadata)
+        
+        if num_prefills > 0 and state_indices_tensor.numel() == 0:
+            return torch.zeros((0, q.size(-1)), device=q.device, dtype=q.dtype)
+            
         for _prefill_idx in range(num_prefills):
             _start = attn_metadata.query_start_loc[_prefill_idx]
             _end = attn_metadata.query_start_loc[_prefill_idx + 1]
@@ -438,7 +442,6 @@ class MiniMaxText01LinearAttention(nn.Module):
             qs = q[_start:_end].transpose(0, 1).contiguous()
             ks = k[_start:_end].transpose(0, 1).contiguous()
             vs = v[_start:_end].transpose(0, 1).contiguous()
-            slot_id = state_indices_tensor[_prefill_idx]
             slice_layer_cache = kv_cache[slot_id, ...]
 
             out_slice = MiniMaxText01LinearKernel.jit_linear_forward_prefix(
@@ -454,6 +457,10 @@ class MiniMaxText01LinearAttention(nn.Module):
             hidden.append(
                 self._decode_infer(q, k, v, kv_cache, state_indices_tensor,
                                    attn_metadata))
+        
+        if not hidden:
+            return torch.zeros((0, q.size(-1)), device=q.device, dtype=q.dtype)
+            
         hidden = torch.concat(hidden, dim=0).contiguous()
         return hidden
 
@@ -463,6 +470,10 @@ class MiniMaxText01LinearAttention(nn.Module):
         k = k[attn_metadata.num_prefill_tokens:].unsqueeze(2).contiguous()
         v = v[attn_metadata.num_prefill_tokens:].unsqueeze(2).contiguous()
         num_prefills = get_num_prefills(attn_metadata)
+        
+        if num_prefills >= state_indices_tensor.numel():
+            return torch.zeros((0, q.size(-1)), device=q.device, dtype=q.dtype)
+            
         slot_id = state_indices_tensor[num_prefills:]
         hidden = linear_decode_forward_triton(q, k, v, kv_cache, self.tp_slope,
                                               slot_id, 32)
