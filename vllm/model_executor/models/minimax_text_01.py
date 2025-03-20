@@ -34,7 +34,6 @@ from vllm.model_executor.layers.logits_processor import LogitsProcessor
 from vllm.model_executor.layers.quantization.base_config import (
     QuantizationConfig)
 from vllm.model_executor.layers.sampler import Sampler
-from vllm.model_executor.layers.utils import make_layers
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     DEFAULT_VOCAB_PADDING_SIZE, ParallelLMHead, VocabParallelEmbedding)
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
@@ -44,7 +43,7 @@ from vllm.sequence import IntermediateTensors
 
 from .interfaces import HasInnerState, IsHybrid
 from .minimax_cache import MinimaxCacheManager, MinimaxCacheParams
-from .utils import PPMissingLayer, is_pp_missing_parameter
+from .utils import PPMissingLayer, is_pp_missing_parameter, make_layers
 
 
 def replace_weight_name(name: str,
@@ -909,8 +908,12 @@ class MiniMaxText01Model(nn.Module):
                 intermediate_tensors=None,
                 inputs_embeds: Optional[torch.Tensor] = None,
                 **kwargs) -> torch.Tensor:
-        forward_context = get_forward_context()
-        attn_metadata = forward_context.attn_metadata
+        attn_metadata: AttentionMetadata = get_forward_context().attn_metadata
+
+        if "request_ids_to_seq_ids" not in kwargs:
+            kwargs["request_ids_to_seq_ids"] = {}
+        if "finished_requests_ids" not in kwargs:
+            kwargs["finished_requests_ids"] = []
         (
             minimax_cache_tensors,
             state_indices_tensor,
