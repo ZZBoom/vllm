@@ -461,25 +461,9 @@ class MiniMaxText01LinearAttention(nn.Module):
         qkvact = torch.nn.functional.silu(qkv32)
         qkvact = qkvact.view((qkv.shape[0], self.tp_heads, -1))
         q, k, v = torch.split(qkvact, [self.head_dim] * 3, dim=-1)
-        forward_context = get_forward_context()
-        attn_metadata = forward_context.attn_metadata
+        attn_metadata: AttentionMetadata = get_forward_context().attn_metadata
         kv_cache = kv_caches.minimax_cache
         state_indices_tensor = kv_caches.state_indices_tensor
-        if attn_metadata is None:
-            return torch.zeros((1, self.hidden_size), 
-                            dtype=self.dtype, 
-                            device=self.device)
-        # for dummy_run
-        if attn_metadata is None:
-            from vllm.attention import AttentionMetadata
-            attn_metadata = AttentionMetadata(
-                num_prefills=1,
-                num_prefill_tokens=2,
-                num_decode_tokens=hidden_states.shape[0],
-                slot_mapping=torch.zeros(1, device=hidden_states.device, dtype=torch.long),
-                multi_modal_placeholder_index_maps=None,
-                enable_kv_scales_calculation=True,
-            )
         decode_only = attn_metadata.num_prefills == 0
         if not decode_only:
             # prefill and mix
@@ -571,8 +555,7 @@ class MiniMaxText01Attention(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor, positions: torch.Tensor,
                 **kwargs) -> torch.Tensor:
-        forward_context = get_forward_context()
-        attn_metadata = forward_context.attn_metadata
+        attn_metadata: AttentionMetadata = get_forward_context().attn_metadata
         qkv, _ = self.qkv_proj(hidden_states)
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         q, k = attn_metadata.rotary_emb(positions, q, k)
@@ -713,8 +696,7 @@ class MiniMaxText01DecoderLayer(nn.Module):
             is_warmup: bool = False,
             **kwargs) -> Tuple[torch.Tensor, torch.Tensor]:
 
-        forward_context = get_forward_context()
-        attn_metadata = forward_context.attn_metadata
+        attn_metadata: AttentionMetadata = get_forward_context().attn_metadata
         # MiniMaxText01 post-norm
         layernorm_input = hidden_states
         layernorm_output = self.input_layernorm(layernorm_input)
@@ -924,8 +906,7 @@ class MiniMaxText01Model(nn.Module):
                 intermediate_tensors=None,
                 inputs_embeds: Optional[torch.Tensor] = None,
                 **kwargs) -> torch.Tensor:
-        forward_context = get_forward_context()
-        attn_metadata = forward_context.attn_metadata
+        attn_metadata: AttentionMetadata = get_forward_context().attn_metadata
         if attn_metadata is None:
             return None
         if "request_ids_to_seq_ids" not in kwargs:
