@@ -1464,11 +1464,8 @@ class GPUModelRunner(LoRAModelRunnerMixin):
             self.encoder_cache["tmp"] = dict(enumerate(dummy_encoder_outputs))
 
         hidden_states = self._dummy_run(self.max_num_tokens)
-        if get_pp_group().is_last_rank:
-            if hidden_states is not None:
-                sampler_output = self._dummy_sampler_run(hidden_states)
-            else:
-                sampler_output = None
+        if hidden_states is not None and get_pp_group().is_last_rank:
+            sampler_output = self._dummy_sampler_run(hidden_states)
         else:
             sampler_output = None
         torch.cuda.synchronize()
