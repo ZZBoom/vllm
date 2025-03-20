@@ -13,6 +13,10 @@ from torch import nn
 from transformers.configuration_utils import PretrainedConfig
 
 from vllm.attention import Attention, AttentionMetadata
+from vllm.attention.backends.flash_attn import FlashAttentionMetadata
+from vllm.attention.backends.placeholder_attn import (
+    PlaceholderAttentionMetadata)
+from vllm.attention.backends.xformers import XFormersMetadata
 from vllm.config import CacheConfig, VllmConfig, get_current_vllm_config
 from vllm.distributed.communication_op import tensor_model_parallel_all_reduce
 from vllm.forward_context import get_forward_context
@@ -73,6 +77,20 @@ def weight_loader_with_alias(alias: str):
         return inner_func
 
     return wrapper
+
+
+def get_num_prefills(attn_metadata):
+    if (isinstance(attn_metadata,
+                (FlashAttentionMetadata, XFormersMetadata,
+                PlaceholderAttentionMetadata))
+        and attn_metadata.context_lens_tensor is not None):
+        if attn_metadata.context_lens_tensor > 0:
+            return 1
+        else:
+            return 0
+    if not hasattr(attn_metadata, "num_prefills"):
+        return 0
+    return attn_metadata.num_prefills
 
 
 class MiniMaxText01RMSNormTP(CustomOp):
@@ -419,7 +437,8 @@ class MiniMaxText01LinearAttention(nn.Module):
     def _prefill_and_mix_infer(self, q, k, v, kv_cache, state_indices_tensor,
                                attn_metadata):
         hidden = []
-        for _prefill_idx in range(attn_metadata.num_prefills):
+        num_prefills = get_num_prefills(attn_metadata)
+        for _prefill_idx in range(num_prefills):
             _start = attn_metadata.query_start_loc[_prefill_idx]
             _end = attn_metadata.query_start_loc[_prefill_idx + 1]
             slot_id = state_indices_tensor[_prefill_idx]
@@ -450,7 +469,8 @@ class MiniMaxText01LinearAttention(nn.Module):
         q = q[attn_metadata.num_prefill_tokens:].unsqueeze(2).contiguous()
         k = k[attn_metadata.num_prefill_tokens:].unsqueeze(2).contiguous()
         v = v[attn_metadata.num_prefill_tokens:].unsqueeze(2).contiguous()
-        slot_id = state_indices_tensor[attn_metadata.num_prefills:]
+        num_prefills = get_num_prefills(attn_metadata)
+        slot_id = state_indices_tensor[num_prefills:]
         hidden = linear_decode_forward_triton(q, k, v, kv_cache, self.tp_slope,
                                               slot_id, 32)
         return hidden
@@ -470,8 +490,8 @@ class MiniMaxText01LinearAttention(nn.Module):
         attn_metadata = forward_context.attn_metadata
         kv_cache = kv_caches.minimax_cache
         state_indices_tensor = kv_caches.state_indices_tensor
-
-        decode_only = attn_metadata.num_prefills == 0
+        num_prefills = get_num_prefills(attn_metadata)
+        decode_only = num_prefills == 0
         if not decode_only:
             # prefill and mix
             hidden = self._prefill_and_mix_infer(q, k, v, kv_cache,
@@ -902,7 +922,8 @@ class MiniMaxText01Model(nn.Module):
         for _, seq_to_slot_map in (
                 self.minimax_cache.cache_indices_mapping.items()):
             seq_to_slot_maps.update(seq_to_slot_map)
-        for _prefill_id in range(attn_metadata.num_prefills):
+        num_prefills = get_num_prefills(attn_metadata)
+        for _prefill_id in range(num_prefills):
             seq_id = seq_id_map[_prefill_id]
             # no computed context means this is a new prefill request
             if attn_metadata.context_lens_tensor[
@@ -930,7 +951,8 @@ class MiniMaxText01Model(nn.Module):
             state_indices_tensor,
         ) = self.minimax_cache.current_run_tensors(input_ids, attn_metadata,
                                                    **kwargs)
-        if attn_metadata.num_prefills > 0:
+        num_prefills = get_num_prefills(attn_metadata)
+        if num_prefills > 0:
             self._clear_prefill_cache(attn_metadata, minimax_cache_tensors,
                                       **kwargs)
 
